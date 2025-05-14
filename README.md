@@ -1,186 +1,234 @@
-🚀 EC2 Cost Optimization Using AWS Lambda and CloudWatch
+✅ Final Project Goals
+Feature	Details
+EC2 Target	                Instances tagged with Environment=Non-Prod
+Stop Schedule	            Every Friday 6:00 PM (Sydney Time)
+Start Schedule	            Every Monday 8:00 AM (Sydney Time)
+Notifications	            Send SNS email when instances are stopped or started
+Security	                IAM role with ec2:DescribeInstances, ec2:StartInstances, ec2:                        StopInstances only for tagged resources
+Language	Python 3.10 with Boto3
 
-## 📌 Overview
+📁 GitHub Directory Structure
 
-This project automates the shutdown of **non-production EC2 instances** to reduce AWS costs. Leveraging **AWS Lambda**, **CloudWatch Events (EventBridge)**, and **Boto3**, the solution stops tagged EC2 instances (`Environment=Non-Prod`) every 3 minutes without manual intervention. It achieves up to **60% cost savings** by enforcing tag-based filtering and secure IAM access.
-
----
-
-## 🎯 Objective
-
-- Automate EC2 instance management to reduce unused compute costs.
-- Ensure only non-production instances are stopped.
-- Provide a serverless, secure, and scheduled solution using native AWS services.
-
----
-
-## ⚙️ Architecture
-
-+----------------------+ +-----------------------+
-| CloudWatch Events | --> | AWS Lambda |
-| (Every 3 Minutes) | | (Python + Boto3 Code) |
-+----------------------+ +-----------------------+
-|
-v
-+--------------------------+
-| EC2 Instances with Tag: |
-| Environment=Non-Prod |
-+--------------------------+
-
-
-
----
-
-## 📁 Project Structure
-
-ec2-cost-optimizer/
+ec2-scheduler-project/
+│
 ├── lambda/
-│ └── stop_non_prod_ec2.py # Python script for Lambda function
+│   ├── stop_nonprod_instances.py
+│   └── start_nonprod_instances.py
+│
 ├── iam/
-│ └── lambda_execution_policy.json # IAM policy for Lambda permissions
+│   └── lambda_execution_role.json
+│
+├── sns/
+│   └── setup_sns_notification.md
+│
 ├── cloudwatch/
-│ └── schedule_rule.md # CloudWatch rule description
-├── README.md # Project documentation (this file)
+│   └── eventbridge_schedules.md
+│
+├── README.md
+└── LICENSE
+🔧 Step-by-Step Setup in AWS Console
+🔹 Step 1: Tag EC2 Instances
+In EC2 → Instances:
 
+Add a tag to each non-production instance:
 
+Key: Environment
 
----
+Value: Non-Prod
 
-## 🛠️ Technologies Used
+🔹 Step 2: Create SNS Topic for Notifications
+Go to SNS > Topics > Create topic
 
-- **AWS Lambda**
-- **Amazon EC2**
-- **CloudWatch Events (EventBridge)**
-- **IAM (Identity & Access Management)**
-- **Python 3.9**
-- **Boto3 (AWS SDK for Python)**
+Choose:
 
----
+Type: Standard
 
-## 🪜 Step-by-Step Setup
+Name: ec2-scheduler-alerts
 
-### 1. ✅ Tag Your EC2 Instances
-1. Go to the **EC2 Console**.
-2. Select each non-production instance.
-3. Under the **Tags** tab:
-   - **Key**: `Environment`
-   - **Value**: `Non-Prod`
+Create a subscription:
 
----
+Protocol: Email
 
-### 2. 🔐 Create IAM Role for Lambda
+Endpoint: your-email@example.com
 
-#### IAM Policy: `lambda_execution_policy.json`
+Confirm the subscription via the email link
 
-```json
+📁 Save the ARN for later (e.g., arn:aws:sns:ap-southeast-2:123456789012:ec2-scheduler-alerts)
+
+🔹 Step 3: Create IAM Role for Lambda
+Go to IAM > Roles > Create role
+
+Use case: Lambda
+
+Attach this inline policy:
+
+📄 iam/lambda_execution_role.json:
+
 {
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "EC2Control",
       "Effect": "Allow",
       "Action": [
         "ec2:DescribeInstances",
+        "ec2:StartInstances",
         "ec2:StopInstances"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "SNSPublish",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:ap-southeast-2:123456789012:ec2-scheduler-alerts"
     }
   ]
 }
-Go to IAM → Roles → Create Role
+Name the role: LambdaEC2SchedulerRole
 
-Select Lambda as the trusted entity.
+🔹 Step 4: Lambda Function – Stop Instances
+📄 lambda/stop_nonprod_instances.py:
 
-Attach the policy above.
-
-Name the role: LambdaEC2StopperRole
-
-3. 🧠 Create the Lambda Function
-Lambda Function Code: stop_non_prod_ec2.py
-<python>
 
 import boto3
+import os
+
+ec2 = boto3.client('ec2')
+sns = boto3.client('sns')
+SNS_TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
 
 def lambda_handler(event, context):
-    ec2 = boto3.client('ec2')
-    stopped_instances = []
-
     filters = [
         {'Name': 'tag:Environment', 'Values': ['Non-Prod']},
         {'Name': 'instance-state-name', 'Values': ['running']}
     ]
-
+    
     response = ec2.describe_instances(Filters=filters)
-
-    for reservation in response['Reservations']:
-        for instance in reservation['Instances']:
-            instance_id = instance['InstanceId']
-            stopped_instances.append(instance_id)
-
-    if stopped_instances:
-        ec2.stop_instances(InstanceIds=stopped_instances)
-        print(f"Stopped instances: {stopped_instances}")
+    instances = [
+        instance['InstanceId']
+        for reservation in response['Reservations']
+        for instance in reservation['Instances']
+    ]
+    
+    if instances:
+        ec2.stop_instances(InstanceIds=instances)
+        message = f"Stopping EC2 instances: {instances}"
     else:
-        print("No running non-prod instances found.")
-Go to Lambda Console → Create Function
-</python>
-Choose:
+        message = "No running Non-Prod EC2 instances to stop."
 
-Name: StopNonProdEC2Instances
+    sns.publish(TopicArn=SNS_TOPIC_ARN, Message=message)
+    print(message)
+Set environment variable:
 
-Runtime: Python 3.9
+SNS_TOPIC_ARN → your SNS ARN
 
-Permissions: Attach LambdaEC2StopperRole
+🔹 Step 5: Lambda Function – Start Instances
+📄 lambda/start_nonprod_instances.py:
 
-Paste the code above.
 
-Click Deploy
+import boto3
+import os
 
-4. ⏰ Schedule Lambda via CloudWatch Events
-Rule Description: schedule_rule.md
-Schedule expression: rate(3 minutes)
+ec2 = boto3.client('ec2')
+sns = boto3.client('sns')
+SNS_TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
 
-Target: Lambda function StopNonProdEC2Instances
+def lambda_handler(event, context):
+    filters = [
+        {'Name': 'tag:Environment', 'Values': ['Non-Prod']},
+        {'Name': 'instance-state-name', 'Values': ['stopped']}
+    ]
+    
+    response = ec2.describe_instances(Filters=filters)
+    instances = [
+        instance['InstanceId']
+        for reservation in response['Reservations']
+        for instance in reservation['Instances']
+    ]
+    
+    if instances:
+        ec2.start_instances(InstanceIds=instances)
+        message = f"Starting EC2 instances: {instances}"
+    else:
+        message = "No stopped Non-Prod EC2 instances to start."
 
-Go to Amazon EventBridge (CloudWatch → Rules)
+    sns.publish(TopicArn=SNS_TOPIC_ARN, Message=message)
+    print(message)
+🔹 Step 6: Create Lambda Functions
+For each function:
 
-Click Create rule
+Go to Lambda > Create function
 
-Rule type: Schedule
+Name:
 
-Set expression: rate(3 minutes)
+StopNonProdInstances
 
-Target:
+StartNonProdInstances
 
-Function: StopNonProdEC2Instances
+Runtime: Python 3.10
 
-Click Create
+Role: Use LambdaEC2SchedulerRole
 
-🔍 Testing & Validation
-Manually start a non-prod EC2 instance.
+Upload code
 
-Wait for 3 minutes.
+Add environment variable:
 
-Go to CloudWatch Logs → /aws/lambda/StopNonProdEC2Instances
+Key: SNS_TOPIC_ARN
 
-You should see a log showing that the instance was stopped.
+Value: SNS topic ARN
 
-💡 Key Features
-🔁 Runs every 3 minutes automatically
+🔹 Step 7: Create EventBridge (CloudWatch) Scheduler Rules
+🛑 Stop Non-Prod Instances (Friday 6 PM)
+Go to EventBridge Scheduler > Create schedule
 
-🏷️ Uses EC2 tag-based filtering (Environment=Non-Prod)
+Type: Cron-based
 
-🔐 Follows IAM least-privilege model
+Cron:
 
-💰 Reduces cloud costs by stopping unused compute
 
-📈 Results
-Reduced EC2 compute cost by ~60% in non-production environments.
+cron(0 8 ? * MON *)   → Start (8 AM Monday)
+cron(0 18 ? * FRI *)  → Stop (6 PM Friday)
+Time zone: Australia/Sydney
 
-Zero manual effort using fully automated scheduling.
+Flexible time: Off
 
-Easily extendable to support starting/stopping or rebooting instances.
+Target: Lambda
 
-👨‍💻 Author
-Name: Prameshwar Thapa
+Schedule name: stop-nonprod-weekend
+
+📄 README.md (for GitHub)
+markdown
+Copy
+Edit
+# EC2 Cost Optimization with Python & AWS Lambda
+
+This project automates the shutdown of Non-Prod EC2 instances on weekends and restarts them Monday morning, using:
+
+- Python (Boto3)
+- AWS Lambda
+- SNS Alerts
+- IAM Roles
+- EventBridge Scheduler
+
+## Features
+- 🚀 Stop Non-Prod EC2 every Friday 6 PM (Sydney)
+- 🔁 Start Non-Prod EC2 every Monday 8 AM
+- 📬 Email notification via SNS
+- 🔐 IAM least-privilege setup
+- 💸 Save up to 60% on EC2 runtime
+
+## Tags Used
+Ensure EC2 instances are tagged:
+```bash
+Environment=Non-Prod
+Directory Structure
+See the /lambda, /iam, /cloudwatch, and /sns folders for setup details.
+
+
+
+
+
+
 
 
