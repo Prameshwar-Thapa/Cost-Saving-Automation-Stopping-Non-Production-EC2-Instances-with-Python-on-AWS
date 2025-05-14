@@ -5,10 +5,10 @@ Stop Schedule	            Every Friday 6:00 PM (Sydney Time)
 Start Schedule	            Every Monday 8:00 AM (Sydney Time)
 Notifications	            Send SNS email when instances are stopped or started
 Security	                IAM role with ec2:DescribeInstances, ec2:StartInstances, ec2:                        StopInstances only for tagged resources
+![Uploading Untitled Diagram.drawio.png…]()
 Language	Python 3.10 with Boto3
 
 
-![Uploading lambad.png…]()
 
 📁 GitHub Directory Structure
 
