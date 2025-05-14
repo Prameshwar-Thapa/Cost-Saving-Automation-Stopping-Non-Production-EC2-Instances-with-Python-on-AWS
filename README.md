@@ -27,9 +27,7 @@ v
 | Environment=Non-Prod |
 +--------------------------+
 
-yaml
-Copy
-Edit
+
 
 ---
 
@@ -44,9 +42,7 @@ ec2-cost-optimizer/
 │ └── schedule_rule.md # CloudWatch rule description
 ├── README.md # Project documentation (this file)
 
-yaml
-Copy
-Edit
+
 
 ---
 
@@ -100,9 +96,8 @@ Name the role: LambdaEC2StopperRole
 
 3. 🧠 Create the Lambda Function
 Lambda Function Code: stop_non_prod_ec2.py
-python
-Copy
-Edit
+<python>
+
 import boto3
 
 def lambda_handler(event, context):
@@ -127,7 +122,7 @@ def lambda_handler(event, context):
     else:
         print("No running non-prod instances found.")
 Go to Lambda Console → Create Function
-
+</python>
 Choose:
 
 Name: StopNonProdEC2Instances
