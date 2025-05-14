@@ -8,6 +8,7 @@ Security	                IAM role with ec2:DescribeInstances, ec2:StartInstances
 
 Language	Python 3.10 with Boto3
 
+
 ![Uploading Untitled Diagram.jpg…]()
 
 
